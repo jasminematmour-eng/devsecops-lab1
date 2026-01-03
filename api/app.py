@@ -1,82 +1,48 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import sqlite3
-import subprocess
 import hashlib
 import os
+import bcrypt
 
 app = Flask(__name__)
 
-SECRET_KEY = "dev-secret-key-12345"  # Hardcoded secret
+# Utilisation d'une variable d'environnement au lieu d'une clé en clair
+SECRET_KEY = os.environ.get("APP_SECRET_KEY", "default-safe-key")
 
+def get_db_connection():
+    conn = sqlite3.connect("users.db")
+    conn.row_factory = sqlite3.Row
+    return conn
 
 @app.route("/login", methods=["POST"])
 def login():
-    username = request.json.get("username")
-    password = request.json.get("password")
+    data = request.json
+    username = data.get("username")
+    password = data.get("password")
 
-    conn = sqlite3.connect("users.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
+    
+    # Correction : Requête paramétrée contre l'injection SQL
+    query = "SELECT password FROM users WHERE username=?"
+    cursor.execute(query, (username,))
+    user = cursor.fetchone()
+    conn.close()
 
-    query = f"""
-        SELECT * FROM users
-        WHERE username='{username}'
-        AND password='{password}'
-    """
-    cursor.execute(query)
-
-    result = cursor.fetchone()
-    if result:
-        return {"status": "success", "user": username}
-
-    return {"status": "error", "message": "Invalid credentials"}
-
-
-@app.route("/ping", methods=["POST"])
-def ping():
-    host = request.json.get("host", "")
-    cmd = f"ping -c 1 {host}"
-    output = subprocess.check_output(cmd, shell=True)
-
-    return {"output": output.decode()}
-
-
-@app.route("/compute", methods=["POST"])
-def compute():
-    expression = request.json.get("expression", "1+1")
-    result = eval(expression)  # CRITIQUE
-    return {"result": result}
-
+    if user and bcrypt.checkpw(password.encode(), user['password']):
+        return jsonify({"status": "success", "user": username})
+    return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
 @app.route("/hash", methods=["POST"])
 def hash_password():
-    pwd = request.json.get("password", "admin")
-    hashed = hashlib.md5(pwd.encode()).hexdigest()
-    return {"md5": hashed}
-
-
-@app.route("/readfile", methods=["POST"])
-def readfile():
-    filename = request.json.get("filename", "test.txt")
-    with open(filename, "r") as f:
-        content = f.read()
-
-    return {"content": content}
-
-
-@app.route("/debug", methods=["GET"])
-def debug():
-    # Renvoie des détails sensibles -> mauvaise pratique
-    return {
-        "debug": True,
-        "secret_key": SECRET_KEY,
-        "environment": dict(os.environ)
-    }
-
+    pwd = request.json.get("password", "")
+    # Correction : Utilisation de bcrypt (plus sécurisé que MD5)
+    hashed = bcrypt.hashpw(pwd.encode(), bcrypt.gensalt())
+    return jsonify({"hash": hashed.decode()})
 
 @app.route("/hello", methods=["GET"])
 def hello():
-    return {"message": "Welcome to the DevSecOps vulnerable API"}
-
+    return jsonify({"message": "Welcome to the Secure DevSecOps API"})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
