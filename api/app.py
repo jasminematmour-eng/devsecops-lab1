@@ -1,18 +1,17 @@
 from flask import Flask, request, jsonify
 import sqlite3
-import hashlib
 import os
 import bcrypt
 
 app = Flask(__name__)
 
-# Utilisation d'une variable d'environnement au lieu d'une clé en clair
-SECRET_KEY = os.environ.get("APP_SECRET_KEY", "default-safe-key")
-
-def get_db_connection():
+# Initialisation d'une base de données sécurisée
+def init_db():
     conn = sqlite3.connect("users.db")
-    conn.row_factory = sqlite3.Row
-    return conn
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS users (username TEXT, password TEXT)")
+    conn.commit()
+    conn.close()
 
 @app.route("/login", methods=["POST"])
 def login():
@@ -20,29 +19,31 @@ def login():
     username = data.get("username")
     password = data.get("password")
 
-    conn = get_db_connection()
+    conn = sqlite3.connect("users.db")
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
-    # Correction : Requête paramétrée contre l'injection SQL
+    # Correction : Requête paramétrée (évite l'injection SQL)
     query = "SELECT password FROM users WHERE username=?"
     cursor.execute(query, (username,))
     user = cursor.fetchone()
     conn.close()
 
-    if user and bcrypt.checkpw(password.encode(), user['password']):
+    if user and bcrypt.checkpw(password.encode(), user['password'].encode()):
         return jsonify({"status": "success", "user": username})
     return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
 @app.route("/hash", methods=["POST"])
 def hash_password():
     pwd = request.json.get("password", "")
-    # Correction : Utilisation de bcrypt (plus sécurisé que MD5)
+    # Correction : Utilisation de bcrypt au lieu de MD5
     hashed = bcrypt.hashpw(pwd.encode(), bcrypt.gensalt())
     return jsonify({"hash": hashed.decode()})
 
 @app.route("/hello", methods=["GET"])
 def hello():
-    return jsonify({"message": "Welcome to the Secure DevSecOps API"})
+    return jsonify({"message": "API Securisee et Pipeline Vert !"})
 
 if __name__ == "__main__":
+    init_db()
     app.run(host="0.0.0.0", port=5000)
