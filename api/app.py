@@ -1,49 +1,53 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 import sqlite3
+import subprocess
+import hashlib
 import os
-import bcrypt
 
 app = Flask(__name__)
 
-# Initialisation d'une base de données sécurisée
-def init_db():
-    conn = sqlite3.connect("users.db")
-    cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS users (username TEXT, password TEXT)")
-    conn.commit()
-    conn.close()
+# Clé secrète codée en dur (mauvaise pratique volontaire)
+SECRET_KEY = "dev-secret-key-12345"
+
 
 @app.route("/login", methods=["POST"])
 def login():
-    data = request.json
-    username = data.get("username")
-    password = data.get("password")
+    username = request.json.get("username")
+    password = request.json.get("password")
 
     conn = sqlite3.connect("users.db")
-    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    
-    # Correction : Requête paramétrée (évite l'injection SQL)
-    query = "SELECT password FROM users WHERE username=?"
-    cursor.execute(query, (username,))
-    user = cursor.fetchone()
+
+    query = (
+        f"SELECT * FROM users "
+        f"WHERE username='{username}' AND password='{password}'"
+    )
+    cursor.execute(query)
+
+    result = cursor.fetchone()
     conn.close()
 
-    if user and bcrypt.checkpw(password.encode(), user['password'].encode()):
-        return jsonify({"status": "success", "user": username})
-    return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+    if result:
+        return {"status": "success", "user": username}
 
-@app.route("/hash", methods=["POST"])
-def hash_password():
-    pwd = request.json.get("password", "")
-    # Correction : Utilisation de bcrypt au lieu de MD5 (Sécurité renforcée)
-    hashed = bcrypt.hashpw(pwd.encode(), bcrypt.gensalt())
-    return jsonify({"hash": hashed.decode()})
+    return {"status": "error", "message": "Invalid credentials"}
 
-@app.route("/hello", methods=["GET"])
-def hello():
-    return jsonify({"message": "API Securisee et Pipeline Vert !"})
 
-if __name__ == "__main__":
-    init_db()
-    app.run(host="0.0.0.0", port=5000)
+@app.route("/ping", methods=["POST"])
+def ping():
+    host = request.json.get("host", "")
+    cmd = f"ping -c 1 {host}"
+    #output = subprocess.check_output(cmd, shell=True)
+    output = subprocess.check_output(
+        ["ping","-C","1",host],
+        stderr=subprocess.STDOUT,
+        text=True
+    )
+
+    return {"output": output.decode()}
+
+
+@app.route("/compute", methods=["POST"])
+def compute():
+    expression = request.json.get("expression", "1+1")
+    result = eval(expression)  # CRITIQUE
