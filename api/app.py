@@ -36,7 +36,7 @@ def login():
 @app.route("/hash", methods=["POST"])
 def hash_password():
     pwd = request.json.get("password", "")
-    # Correction : Utilisation de bcrypt au lieu de MD5
+    # Correction : Utilisation de bcrypt au lieu de MD5 (Sécurité renforcée)
     hashed = bcrypt.hashpw(pwd.encode(), bcrypt.gensalt())
     return jsonify({"hash": hashed.decode()})
 
